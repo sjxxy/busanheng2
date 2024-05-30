@@ -1,4 +1,5 @@
 //1-1:부산헹 2.3이동까지
+//1-2. 좀비, 마동석 행동 수정
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -48,7 +49,7 @@ int get_valid_input(int min, int max, const char* prompt) {
 	return value;
 }
 
-void get_input() {
+void get_game_input() {
 	length = get_valid_input(LEN_MIN, LEN_MAX, "train length");
 	stamina = get_valid_input(STM_MIN, STM_MAX, "madongseok stamina");
 	p = get_valid_input(PROB_MIN, PROB_MAX, "percentile probability 'p'");
@@ -57,6 +58,7 @@ void get_input() {
 void init_game() {
 	srand((unsigned int)time(NULL));
 	C = length - 6;
+	before_C = C;
 	Z = length - 3;
 	M = length - 2;
 	turn = 0;
@@ -96,17 +98,18 @@ void move_citizen() {
 	int c_move_num = rand() % 100;
 
 	if (c_move_num <= 100 - p) {
-		if (C > 1) {
+		if (C > 1 && C - 1 != Z && C - 1 != M) {
 			--C;
+			citizen_aggro = (citizen_aggro < AGGRO_MAX) ? citizen_aggro + 1 : AGGRO_MAX;
 		}
-		citizen_aggro = (citizen_aggro < AGGRO_MAX) ? citizen_aggro + 1 : AGGRO_MAX;
+
 	}
 	else {
 		citizen_aggro = (citizen_aggro > AGGRO_MIN) ? citizen_aggro - 1 : AGGRO_MIN;
 	}
 }
 
-void citizen_where() {
+void print_citizen_status() {
 	if (before_C != C) {
 		printf("citizen: %d -> %d (aggro: %d -> %d)\n", before_C, C, citizen_aggro + ((before_C > C) ? -1 : 1), citizen_aggro);
 	}
@@ -119,19 +122,38 @@ void move_zombie() {
 	before_Z = Z;
 	if (turn % 2 == 1) {
 		if (dongseok_aggro >= citizen_aggro) {
-			if (Z > M) {
+			if (Z > M && Z != M + 1) {
 				--Z;
 			}
 		}
 		else {
-			if (Z > C) {
+			if (Z > C && Z != C + 1) {
 				--Z;
 			}
 		}
 	}
 }
 
-void zombie_where() {
+void zombie_attacked() {
+	if (Z == C + 1) {
+		printf("Zombie attacked citizen!\n");
+		printf("GAME OVER!!!\n");
+		exit(0);
+	}
+	else if (Z == M + 1) {
+		printf("Zombie attacked madongseok! (stamina: %d -> %d)\n", stamina, stamina - 1);
+		stamina--;
+	}
+	else {
+		printf("Zombie move...\n");
+		if (Z > C) {
+			--Z;
+		}
+	}
+}
+
+
+void print_zombie_status() {
 	if (before_Z != Z) {
 		printf("zombie: %d -> %d\n", before_Z, Z);
 	}
@@ -142,25 +164,30 @@ void zombie_where() {
 
 void move_dongseok() {
 	int move;
-	before_M = M; 
+	before_M = M;
 	while (1) {
 		printf("madongseok move(0:stay, 1:left)>> ");
 		scanf_s("%d", &move);
 		if (move == MOVE_LEFT || move == MOVE_STAY) break;
-		printf("Invalid input.\n");
+		printf("잘못된 입력.\n");
 	}
 	if (move == MOVE_LEFT) {
-		if (M > 1) { 
+		if (M > 1 && M - 1 != Z) {  // 이동할 위치에 좀비가 없는지 확인
 			--M;
+			dongseok_aggro = (dongseok_aggro < AGGRO_MAX) ? dongseok_aggro + 1 : AGGRO_MAX;
 		}
-		dongseok_aggro = (dongseok_aggro < AGGRO_MAX) ? dongseok_aggro + 1 : AGGRO_MAX;
+		else if (M - 1 == Z) {  // 이동할 위치에 좀비가 있는 경우
+			printf("Madongseok can't move\n");
+			zombie_attacked();
+		}
 	}
 	else {
 		dongseok_aggro = (dongseok_aggro > AGGRO_MIN) ? dongseok_aggro - 1 : AGGRO_MIN;
 	}
 }
 
-void madongseok_where() {
+
+void print_dongseok_status() {
 	if (before_M != M) {
 		printf("madongseok: %d -> %d (aggro: %d, stamina: %d)\n", before_M, M, dongseok_aggro, stamina);
 	}
@@ -169,7 +196,7 @@ void madongseok_where() {
 	}
 }
 
-void print_status() {
+void print_game_status() {
 	printf("citizen: %d (aggro: %d)\n", C, citizen_aggro);
 	printf("zombie: %d\n", Z);
 	printf("madongseok: %d (aggro: %d, stamina: %d)\n", M, dongseok_aggro, stamina);
@@ -181,7 +208,7 @@ void dongseok_action() {
 		printf("madongseok action(0.rest, 1.provoke, 2.pull)>> ");
 		scanf_s("%d", &action);
 		if (action == ACTION_REST || action == ACTION_PROVOKE || action == ACTION_PULL) break;
-		printf("Invalid input.\n");
+		printf("잘못된 입력.\n");
 	}
 	switch (action) {
 	case ACTION_REST:
@@ -214,7 +241,7 @@ int check_game_over() {
 		printf("\nYOU WIN!!!!!!!");
 		return 1;
 	}
-	if (Z - 1 == C) {
+	if (Z == C + 1) {
 		printf("\nGAME OVER!!!!!!!");
 		return 1;
 	}
@@ -227,7 +254,7 @@ int check_game_over() {
 
 int main(void) {
 	print_intro();
-	get_input();
+	get_game_input();
 	init_game();
 	print_train();
 	while (1) {
@@ -235,16 +262,15 @@ int main(void) {
 		move_citizen();
 		move_zombie();
 		print_train();
-		citizen_where();
-		zombie_where();
+		print_citizen_status();
+		print_zombie_status();
 		move_dongseok();
 		print_train();
-		madongseok_where();
+		print_dongseok_status();
 		dongseok_action();
-		print_train(); // 행동 후 상태를 출력
+		print_train();
 		if (check_game_over()) break;
 		printf(" \n");
 	}
-
 	return 0;
 }
